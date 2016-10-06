@@ -50,7 +50,7 @@ Usage: %s [options] etcd_key command
 
 	if *version {
 		fmt.Println(APP, VERSION)
-		os.Exit(2)
+		return
 	}
 
 	config := &Config{
@@ -63,7 +63,7 @@ Usage: %s [options] etcd_key command
 	if *printConfig {
 		b, _ := json.MarshalIndent(config, "", "\t")
 		fmt.Println(string(b))
-		os.Exit(1)
+		return
 	}
 
 	cfgData, err := ioutil.ReadFile(*configFile)

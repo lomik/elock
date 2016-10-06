@@ -6,11 +6,20 @@ go:
 script:
 - make
 
+before_deploy:
+- sudo apt-get install -y rpm ruby
+- go get github.com/mitchellh/gox
+- gem install fpm
+- make gox-build
+- make fpm-deb
+- make fpm-rpm
+
 deploy:
   provider: releases
   api_key:
     secure: qCr9p1nm8XhkC3yA4iDdtkL7Ba0ZznZVRgLoo8e9EmzNIxBzWW3Fizc713Z/pfwMza+i1rpzMhFYG35X+0Y9m7m4ZWxpEpGRu6c+tDt7dMvjAiCMcIQ53fqu4zE0XWLzguRcdAR+4MqBdTN+yP2KOW9Wlmldo+Zsmb4HdQfZaYL9Pj55ZLVNNlDh+c1oSSVKfZkC/2Cd19FrWZhii/d1p8F3KnnNOTxkdrJxLLtR2JGTGICrqGuVmb2xIQVPg84vyMcL0HXAjkZKqEe/73hT5VTFVckzjf+wRukkQIdis1sdPZiKBM0z7ikzS4CabOGhLS8E1fsoEstUA/73gO7op6Mb5riNktJkSryd8UYOFvJI/l2iBujEtBliAxVn4Xo3XfBtVJlAiSLYIRW9F6z5DqwJLvVhfWgFz2X4AnY9HSgr7fMSu4vgQMf3gNvUc4++zd9obuPoRFiGOduHyapfRYuEKSKIF++sU6Qm9YraPgLFHJQJJyA6MKyApK+/peBZPCXu3tUHbTo3gzHF2snhqfNGrTMr3uQx7drBIrD1drp51Slk6dGGLEWS9XGQzcNYCzIc4vU9bTqTebY75BUJJhip/oW6D8E9jlWOXKKCFigtfUBNmTSC2LAhNf0Sy0CgTVbtYLG3qRnoGOA6jjOPKNU24OggnfhJW/FdTsOy4Kc=
-  file: '*.rpm'
+  file_glob: true
+  file: "*.{deb,rpm}"
   on:
     repo: lomik/elock
     tags: true
