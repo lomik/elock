@@ -27,7 +27,7 @@ type Config struct {
 }
 
 func main() {
-	configFile := flag.String("config", fmt.Sprintf("/usr/local/etc/%s.json", APP), "Config file in json format")
+	configFile := flag.String("config", fmt.Sprintf("/etc/%s/%s.json", APP, APP), "Config file in json format")
 	printConfig := flag.Bool("config-print-default", false, "Print default config")
 	nowait := flag.Bool("n", false, "Fail rather than wait")
 	slots := flag.Int("s", 1, "Available slots count for lock")
