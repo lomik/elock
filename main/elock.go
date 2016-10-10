@@ -37,6 +37,7 @@ func main() {
 	ttl := flag.Duration("ttl", 0, "Lock ttl (default from config)")
 	refresh := flag.Duration("refresh", 0, "Refresh interval (default from config)")
 	minLockTime := flag.Duration("min", 0, "Minimum lock time")
+	list := flag.Bool("list", false, "List all active locks")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -92,6 +93,38 @@ Usage: %s [options] etcd_key command
 
 	if *refresh != 0 {
 		lockRefresh = *refresh
+	}
+
+	if *list {
+		records, err := elock.List(elock.Options{
+			EtcdEndpoints: config.EtcdEndpoints,
+			Path:          config.EtcdRoot,
+			Debug:         *debug,
+		}, *timeout)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		for _, r := range records {
+			if r.ValueError != nil {
+				fmt.Printf("[error] %s: %s\n", r.Path, r.ValueError.Error())
+			} else {
+				if r.IsDead() {
+					d := time.Now().Sub(r.LastRefresh())
+					d = time.Duration(int64(d.Seconds())) * time.Second
+					fmt.Printf(
+						" [died] %s: last refresh %s ago\n",
+						r.Path,
+						d.String(),
+					)
+				} else {
+					fmt.Printf("   [ok] %s\n", r.Path)
+				}
+			}
+		}
+
+		return
 	}
 
 	args := flag.Args()

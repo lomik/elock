@@ -9,6 +9,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +43,68 @@ type Value struct {
 func (v *Value) String() string {
 	b, _ := json.Marshal(v)
 	return string(b)
+}
+
+func (v *Value) Validate() error {
+	var err error
+
+	_, err = time.ParseDuration(v.TTL)
+	if err != nil {
+		return err
+	}
+
+	_, err = time.ParseDuration(v.Refresh)
+	if err != nil {
+		return err
+	}
+
+	if v.Locktime != "" {
+		_, err = time.ParseDuration(v.Locktime)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+type Record struct {
+	Path       string
+	Expiration int64
+	Value      *Value
+	ValueError error
+}
+
+type ByPath []*Record
+
+func (a ByPath) Len() int           { return len(a) }
+func (a ByPath) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByPath) Less(i, j int) bool { return strings.Compare(a[i].Path, a[j].Path) < 0 }
+
+func (r *Record) IsDead() bool {
+	// check min lifetime
+	if r.Value.Locktime != "" {
+		locktime, _ := time.ParseDuration(r.Value.Locktime)
+
+		lockStart := time.Unix(r.Value.Start, 0)
+
+		if lockStart.Add(locktime).Add(time.Minute).After(time.Unix(r.Expiration, 0)) {
+			return false
+		}
+	}
+
+	refresh, _ := time.ParseDuration(r.Value.Refresh)
+
+	if r.LastRefresh().Before(time.Now().Add(2 * refresh)) {
+		return true
+	}
+
+	return false
+}
+
+func (r *Record) LastRefresh() time.Time {
+	ttl, _ := time.ParseDuration(r.Value.TTL)
+	return time.Unix(r.Expiration, 0).Add(-ttl)
 }
 
 type XLock struct {
@@ -324,4 +389,81 @@ func (x *XLock) Unlock() error {
 	)
 
 	return err
+}
+
+func listCollect(root string, n *etcd.Node) []*Record {
+	result := make([]*Record, 0)
+
+	if n == nil {
+		return result
+	}
+
+	m, _ := regexp.Match("lock-\\d+$", []byte(n.Key))
+	if m {
+		value := &Value{}
+
+		relPath, _ := filepath.Rel(root, n.Key)
+
+		err := json.Unmarshal([]byte(n.Value), value)
+
+		rec := &Record{
+			Path:       relPath,
+			Expiration: n.Expiration.Unix(),
+			Value:      value,
+			ValueError: err,
+		}
+
+		if err == nil {
+			rec.ValueError = value.Validate()
+		}
+
+		result = append(result, rec)
+	}
+	for _, nn := range n.Nodes {
+		result = append(result, listCollect(root, nn)...)
+	}
+
+	return result
+}
+
+func List(options Options, timeout time.Duration) ([]*Record, error) {
+
+	Debug := func(format string, v ...interface{}) {
+		if options.Debug {
+			log.Printf(format, v...)
+		}
+	}
+
+	Debug("ListTimeout: %#v", timeout)
+	ctx := context.Background()
+	var cancel context.CancelFunc
+
+	if timeout != 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.Debug)
+
+	if err != nil {
+		return nil, err
+	}
+
+	r, err := etcdClient.Query(
+		options.Path,
+		etcd.GET(),
+		etcd.Recursive(true),
+		etcd.Timeout(time.Minute),
+		etcd.Context(ctx),
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	records := listCollect(options.Path, r.Node)
+
+	sort.Sort(ByPath(records))
+
+	return records, nil
 }
