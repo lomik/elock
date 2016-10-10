@@ -38,6 +38,7 @@ func main() {
 	refresh := flag.Duration("refresh", 0, "Refresh interval (default from config)")
 	minLockTime := flag.Duration("min", 0, "Minimum lock time")
 	list := flag.Bool("list", false, "List all active locks")
+	remove := flag.Bool("rm", false, "Remove lock by path (from list)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -95,6 +96,8 @@ Usage: %s [options] etcd_key command
 		lockRefresh = *refresh
 	}
 
+	args := flag.Args()
+
 	if *list {
 		records, err := elock.List(elock.Options{
 			EtcdEndpoints: config.EtcdEndpoints,
@@ -127,7 +130,19 @@ Usage: %s [options] etcd_key command
 		return
 	}
 
-	args := flag.Args()
+	if *remove {
+		err := elock.Remove(elock.Options{
+			EtcdEndpoints: config.EtcdEndpoints,
+			Path:          config.EtcdRoot,
+			Debug:         *debug,
+		}, *timeout, args)
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return
+	}
 
 	if len(args) < 2 || *slots < 1 {
 		flag.Usage()

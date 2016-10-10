@@ -467,3 +467,43 @@ func List(options Options, timeout time.Duration) ([]*Record, error) {
 
 	return records, nil
 }
+
+func Remove(options Options, timeout time.Duration, keys []string) error {
+
+	Debug := func(format string, v ...interface{}) {
+		if options.Debug {
+			log.Printf(format, v...)
+		}
+	}
+
+	Debug("RemoveTimeout: %#v", timeout)
+	ctx := context.Background()
+	var cancel context.CancelFunc
+
+	if timeout != 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.Debug)
+
+	if err != nil {
+		return err
+	}
+
+	for _, k := range keys {
+		r, err := etcdClient.Query(
+			filepath.Join(options.Path, k),
+			etcd.DELETE(),
+			etcd.Timeout(time.Minute),
+			etcd.Context(ctx),
+		)
+		if err != nil {
+			log.Printf("%s delete error: %s", k, err.Error())
+		} else if r.ErrorMessage != "" {
+			log.Printf("%s delete error: %s", k, r.ErrorMessage)
+		}
+	}
+
+	return nil
+}
