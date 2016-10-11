@@ -39,6 +39,7 @@ func main() {
 	minLockTime := flag.Duration("min", 0, "Minimum lock time")
 	list := flag.Bool("list", false, "List all active locks")
 	remove := flag.Bool("rm", false, "Remove lock by path (from list)")
+	zeroExit := flag.Bool("0", false, "Exit code 0 on etcd errors or lock timeout")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -66,6 +67,23 @@ Usage: %s [options] etcd_key command
 		b, _ := json.MarshalIndent(config, "", "\t")
 		fmt.Println(string(b))
 		return
+	}
+
+	exit := func(code int) {
+		if *zeroExit {
+			os.Exit(0)
+		} else {
+			os.Exit(code)
+		}
+	}
+
+	fatal := func(err error) {
+		if *zeroExit {
+			log.Println(err)
+			os.Exit(0)
+		} else {
+			log.Fatal(err)
+		}
 	}
 
 	cfgData, err := ioutil.ReadFile(*configFile)
@@ -106,7 +124,7 @@ Usage: %s [options] etcd_key command
 		}, *timeout)
 
 		if err != nil {
-			log.Fatal(err)
+			fatal(err)
 		}
 
 		for _, r := range records {
@@ -138,7 +156,7 @@ Usage: %s [options] etcd_key command
 		}, *timeout, args)
 
 		if err != nil {
-			log.Fatal(err)
+			fatal(err)
 		}
 
 		return
@@ -178,12 +196,12 @@ Usage: %s [options] etcd_key command
 		for _ = range c {
 			// sig is a ^C, handle it
 			x.Unlock()
-			os.Exit(1)
+			exit(1)
 		}
 	}()
 
 	if err != nil {
-		log.Fatal(err)
+		fatal(err)
 	}
 
 	cmd := exec.Command(args[1], args[2:]...)
