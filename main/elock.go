@@ -40,6 +40,7 @@ func main() {
 	list := flag.Bool("list", false, "List all active locks")
 	remove := flag.Bool("rm", false, "Remove lock by path (from list)")
 	zeroExit := flag.Bool("0", false, "Exit code 0 on etcd errors or lock timeout")
+	runAnyway := flag.Bool("run-anyway", false, "Run the command even if the lock could not take")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -200,7 +201,24 @@ Usage: %s [options] etcd_key command
 		}
 	}()
 
-	if err != nil {
+	if err != nil { // lock failed
+		if *runAnyway { // force run
+			log.Println(err)
+
+			cmd := exec.Command(args[1], args[2:]...)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.Stdin = os.Stdin
+			err = cmd.Run()
+
+			if err != nil {
+				log.Fatal(err)
+
+			}
+
+			return
+		}
+
 		fatal(err)
 	}
 
