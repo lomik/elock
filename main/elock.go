@@ -17,13 +17,13 @@ import (
 )
 
 const APP = "elock"
-const VERSION = "0.2"
+const VERSION = "0.3"
 
 type Config struct {
 	EtcdEndpoints []string `json:"etcd-endpoints"`
 	EtcdRoot      string   `json:"etcd-root"`
 	EtcdTTL       string   `json:"etcd-default-ttl"`
-	EtcdRefresh   string   `json:"etcd-deafult-refresh"`
+	EtcdRefresh   string   `json:"etcd-default-refresh"`
 }
 
 func main() {
