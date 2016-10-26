@@ -449,8 +449,12 @@ func List(options Options, timeout time.Duration) ([]*Record, error) {
 		return nil, err
 	}
 
+	path := options.Path
+	if len(path) == 0 || path[len(path)-1] != '/' {
+		path = path + "/"
+	}
 	r, err := etcdClient.Query(
-		options.Path,
+		path,
 		etcd.GET(),
 		etcd.Recursive(true),
 		etcd.Timeout(time.Minute),

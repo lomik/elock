@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"sync"
 	"time"
@@ -247,7 +246,7 @@ func (client *Client) Query(key string, opts ...Option) (*Response, error) {
 QueryLoop:
 	for {
 		u, _ := url.Parse(endpoint) // error validated in client contructor
-		u.Path = path.Join("/v2/keys", key)
+		u.Path = "/v2/keys" + key
 
 		q := &Request{
 			method:  "GET",
