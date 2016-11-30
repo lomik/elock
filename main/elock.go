@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -17,7 +18,7 @@ import (
 )
 
 const APP = "elock"
-const VERSION = "0.3.2"
+const VERSION = "0.4.0"
 
 type Config struct {
 	EtcdEndpoints []string `json:"etcd-endpoints"`
@@ -41,6 +42,8 @@ func main() {
 	remove := flag.Bool("rm", false, "Remove lock by path (from list)")
 	zeroExit := flag.Bool("0", false, "Exit code 0 on etcd errors or lock timeout")
 	runAnyway := flag.Bool("run-anyway", false, "Run the command even if the lock could not take")
+	sleepBefore := flag.Duration("sleep-before", 0, "Sleep random time (from zero to selected) before lock attempt")
+	quiet := flag.Bool("quiet", false, "Don't print anything")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -68,6 +71,19 @@ Usage: %s [options] etcd_key command
 		b, _ := json.MarshalIndent(config, "", "\t")
 		fmt.Println(string(b))
 		return
+	}
+
+	if *quiet {
+		log.SetOutput(ioutil.Discard)
+	}
+
+	if *sleepBefore != 0 {
+		rand.Seed(time.Now().UnixNano())
+		sleepTime := time.Duration(rand.Int63n((*sleepBefore).Nanoseconds()))
+		if *debug {
+			log.Printf("sleep-before: %s", sleepTime.String())
+		}
+		time.Sleep(sleepTime)
 	}
 
 	exit := func(code int) {

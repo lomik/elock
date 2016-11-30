@@ -144,7 +144,6 @@ func New(options Options) (*XLock, error) {
 		etcdClient: etcdClient,
 	}
 
-	x.Debug("value: %s", x.lockValue)
 	return x, nil
 }
 
