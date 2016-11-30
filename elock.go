@@ -95,7 +95,7 @@ func (r *Record) IsDead() bool {
 
 	refresh, _ := time.ParseDuration(r.Value.Refresh)
 
-	if r.LastRefresh().Before(time.Now().Add(4 * refresh)) {
+	if r.LastRefresh().Before(time.Now().Add(-4 * refresh)) {
 		return true
 	}
 
