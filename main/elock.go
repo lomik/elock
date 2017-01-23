@@ -210,8 +210,12 @@ Usage: %s [options] etcd_key command
 	signal.Notify(c, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
 
 	go func() {
-		for _ = range c {
+		for s := range c {
 			// sig is a ^C, handle it
+			if *debug {
+				log.Printf("signal received: %#v", s)
+			}
+
 			x.Unlock()
 			exit(1)
 		}

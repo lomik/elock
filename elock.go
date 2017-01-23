@@ -121,6 +121,10 @@ type XLock struct {
 
 	refreshExit chan bool
 	refreshWg   sync.WaitGroup
+
+	expireMutex   sync.Mutex
+	expireChan    chan bool
+	expireDealine time.Time
 }
 
 var ErrorAlreadyLocked = errors.New("already locked, run Unlock first")
@@ -151,6 +155,59 @@ func (x *XLock) Debug(format string, v ...interface{}) {
 	if x.options.Debug {
 		log.Printf(format, v...)
 	}
+}
+
+func (x *XLock) updateExpires() {
+	x.expireMutex.Lock()
+	defer x.expireMutex.Unlock()
+
+	newDeadline := time.Now().Add(x.options.TTL).Add(-x.options.Refresh / 2)
+	x.Debug("expiresDealine := %s", newDeadline.String())
+
+	x.expireDealine = newDeadline
+}
+
+func (x *XLock) expireWorker() {
+	exit := x.refreshExit
+	expireChan := x.expireChan
+
+	go func() {
+	WaitLoop:
+		for {
+			x.expireMutex.Lock()
+			deadline := x.expireDealine
+			x.expireMutex.Unlock()
+
+			if time.Now().After(deadline) {
+				x.Debug("expired!")
+				close(expireChan)
+				return
+			}
+
+			timer := time.NewTimer(deadline.Sub(time.Now()))
+
+			select {
+			case <-timer.C:
+				continue WaitLoop
+			case <-exit:
+				timer.Stop()
+				return
+			}
+		}
+	}()
+}
+
+func (x *XLock) OnExpired(callback func()) {
+	exit := x.refreshExit
+	expireChan := x.expireChan
+	go func() {
+		select {
+		case <-exit:
+			return
+		case <-expireChan:
+			callback()
+		}
+	}()
 }
 
 func (x *XLock) currentTTL() time.Duration {
@@ -191,6 +248,7 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 
 	x.refreshExit = make(chan bool)
 	x.refreshWg = sync.WaitGroup{}
+	x.expireChan = make(chan bool)
 
 	var etcdIndex uint64
 
@@ -206,7 +264,15 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 		wg := &x.refreshWg
 		exit := x.refreshExit
 
-		wg.Add(1)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			<-exit
+			cancel()
+		}()
 
 		go func() {
 			defer wg.Done()
@@ -218,7 +284,7 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 				select {
 				case <-t.C:
 					// refresh key
-					x.etcdClient.Query(
+					r, err := x.etcdClient.Query(
 						lockKey,
 						etcd.PUT(),
 						etcd.PrevValue(x.lockValue),
@@ -226,7 +292,12 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 						etcd.Refresh(true),
 						etcd.TTL(x.currentTTL()),
 						etcd.Timeout(x.options.Refresh),
+						etcd.Context(ctx),
 					)
+
+					if err == nil && r != nil && r.ErrorCode == 0 {
+						x.updateExpires()
+					}
 				case <-exit:
 					break RefreshLoop
 				}
@@ -271,6 +342,8 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 				x.locked = true
 				x.lockSlot = i
 				x.Debug("SUCCESS locked slot %d", i)
+				x.updateExpires()
+				x.expireWorker()
 				startRefresh()
 				return true, nil
 			}
