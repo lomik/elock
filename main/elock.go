@@ -246,10 +246,22 @@ Usage: %s [options] etcd_key command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	err = cmd.Run()
+	err = cmd.Start()
 
+	if err != nil {
+		x.Unlock()
+		log.Fatal(err)
+	}
+
+	x.OnExpired(func() {
+		if *debug {
+			log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
+		}
+		cmd.Process.Kill()
+	})
+
+	err = cmd.Wait()
 	x.Unlock()
-
 	if err != nil {
 		log.Fatal(err)
 	}
