@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -138,6 +139,10 @@ func Recursive(v bool) Option {
 
 		if v {
 			q.Set("recursive", "true")
+
+			if !strings.HasSuffix(r.url.Path, "/") {
+				r.url.Path += "/"
+			}
 		} else {
 			q.Del("recursive")
 		}
