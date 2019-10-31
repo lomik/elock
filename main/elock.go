@@ -19,7 +19,7 @@ import (
 )
 
 const APP = "elock"
-const VERSION = "0.4.0"
+const VERSION = "0.5.0"
 
 type Config struct {
 	EtcdEndpoints []string     `json:"etcd-endpoints"`
