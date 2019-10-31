@@ -32,14 +32,6 @@ type Request struct {
 
 type Option func(r *Request)
 
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	if os.IsNotExist(err) {
-		return false
-	}
-	return !info.IsDir()
-}
-
 func GET() Option {
 	return func(r *Request) {
 		r.method = "GET"
