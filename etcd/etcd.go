@@ -2,6 +2,8 @@ package etcd
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -13,6 +15,12 @@ import (
 	"sync"
 	"time"
 )
+
+type TlsOpts struct {
+	Ca   string `json:"ca"`
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
 
 type Request struct {
 	method  string
@@ -202,11 +210,11 @@ type Client struct {
 	sync.RWMutex
 	endpoints     []string
 	endpointIndex int
-
-	debug bool
+	transport     http.RoundTripper
+	debug         bool
 }
 
-func NewClient(endpoints []string, debug bool) (*Client, error) {
+func NewClient(endpoints []string, tlsOpts TlsOpts, debug bool) (*Client, error) {
 	// check endpoints parse
 	for _, e := range endpoints {
 		_, err := url.Parse(e)
@@ -215,10 +223,34 @@ func NewClient(endpoints []string, debug bool) (*Client, error) {
 		}
 	}
 
-	return &Client{
+	client := &Client{
 		endpoints: endpoints,
 		debug:     debug,
-	}, nil
+	}
+	if tlsOpts.Ca != "" && tlsOpts.Cert != "" && tlsOpts.Key != "" {
+		// Load client cert
+		cert, err := tls.LoadX509KeyPair(tlsOpts.Cert, tlsOpts.Key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Load CA cert
+		caCert, err := ioutil.ReadFile(tlsOpts.Ca)
+		if err != nil {
+			log.Fatal(err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		// Setup HTTPS client
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      caCertPool,
+		}
+		tlsConfig.BuildNameToCertificate()
+		client.transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
+	return client, nil
 }
 
 func (client *Client) Debug(format string, v ...interface{}) {
@@ -272,7 +304,8 @@ QueryLoop:
 		client.Debug("%s %s", q.method, q.url.String())
 
 		httpClient := &http.Client{
-			Timeout: q.timeout,
+			Timeout:   q.timeout,
+			Transport: client.transport,
 		}
 
 		// @TODO: check error?

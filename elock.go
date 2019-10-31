@@ -20,13 +20,13 @@ import (
 
 type Options struct {
 	EtcdEndpoints []string
-
-	Path        string
-	Slots       int
-	TTL         time.Duration
-	Refresh     time.Duration
-	Debug       bool
-	MinLockTime time.Duration
+	EtcdTls       etcd.TlsOpts
+	Path          string
+	Slots         int
+	TTL           time.Duration
+	Refresh       time.Duration
+	Debug         bool
+	MinLockTime   time.Duration
 }
 
 type Value struct {
@@ -137,7 +137,7 @@ func DefaultOptions() Options {
 
 // New creates XLock instance
 func New(options Options) (*XLock, error) {
-	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.Debug)
+	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.EtcdTls, options.Debug)
 
 	if err != nil {
 		return nil, err
@@ -515,7 +515,7 @@ func List(options Options, timeout time.Duration) ([]*Record, error) {
 		defer cancel()
 	}
 
-	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.Debug)
+	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.EtcdTls, options.Debug)
 
 	if err != nil {
 		return nil, err
@@ -561,7 +561,7 @@ func Remove(options Options, timeout time.Duration, keys []string) error {
 		defer cancel()
 	}
 
-	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.Debug)
+	etcdClient, err := etcd.NewClient(options.EtcdEndpoints, options.EtcdTls, options.Debug)
 
 	if err != nil {
 		return err
