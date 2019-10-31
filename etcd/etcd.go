@@ -219,7 +219,7 @@ type Client struct {
 	sync.RWMutex
 	endpoints     []string
 	endpointIndex int
-	transport     *http.Transport
+	transport     http.RoundTripper
 	debug         bool
 }
 
@@ -236,7 +236,7 @@ func NewClient(endpoints []string, tlsOpts TlsOpts, debug bool) (*Client, error)
 		endpoints: endpoints,
 		debug:     debug,
 	}
-	if fileExists(tlsOpts.Ca) && fileExists(tlsOpts.Cert) && fileExists(tlsOpts.Key) {
+	if tlsOpts.Ca != "" && tlsOpts.Cert != "" && tlsOpts.Key != "" {
 		// Load client cert
 		cert, err := tls.LoadX509KeyPair(tlsOpts.Cert, tlsOpts.Key)
 		if err != nil {
@@ -312,16 +312,9 @@ QueryLoop:
 
 		client.Debug("%s %s", q.method, q.url.String())
 
-		var httpClient *http.Client
-		if client.transport == (&http.Transport{}) {
-			httpClient = &http.Client{
-				Timeout: q.timeout,
-			}
-		} else {
-			httpClient = &http.Client{
-				Timeout:   q.timeout,
-				Transport: client.transport,
-			}
+		httpClient := &http.Client{
+			Timeout:   q.timeout,
+			Transport: client.transport,
 		}
 
 		// @TODO: check error?
