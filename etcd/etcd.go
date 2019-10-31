@@ -2,17 +2,26 @@ package etcd
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+type TlsOpts struct {
+	Ca   string `json:"ca"`
+	Cert string `json:"cert"`
+	Key  string `json:"key"`
+}
 
 type Request struct {
 	method  string
@@ -22,6 +31,14 @@ type Request struct {
 }
 
 type Option func(r *Request)
+
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
 
 func GET() Option {
 	return func(r *Request) {
@@ -202,11 +219,11 @@ type Client struct {
 	sync.RWMutex
 	endpoints     []string
 	endpointIndex int
-
-	debug bool
+	transport     *http.Transport
+	debug         bool
 }
 
-func NewClient(endpoints []string, debug bool) (*Client, error) {
+func NewClient(endpoints []string, tlsOpts TlsOpts, debug bool) (*Client, error) {
 	// check endpoints parse
 	for _, e := range endpoints {
 		_, err := url.Parse(e)
@@ -215,10 +232,34 @@ func NewClient(endpoints []string, debug bool) (*Client, error) {
 		}
 	}
 
-	return &Client{
+	client := &Client{
 		endpoints: endpoints,
 		debug:     debug,
-	}, nil
+	}
+	if fileExists(tlsOpts.Ca) && fileExists(tlsOpts.Cert) && fileExists(tlsOpts.Key) {
+		// Load client cert
+		cert, err := tls.LoadX509KeyPair(tlsOpts.Cert, tlsOpts.Key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		// Load CA cert
+		caCert, err := ioutil.ReadFile(tlsOpts.Ca)
+		if err != nil {
+			log.Fatal(err)
+		}
+		caCertPool := x509.NewCertPool()
+		caCertPool.AppendCertsFromPEM(caCert)
+
+		// Setup HTTPS client
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      caCertPool,
+		}
+		tlsConfig.BuildNameToCertificate()
+		client.transport = &http.Transport{TLSClientConfig: tlsConfig}
+	}
+	return client, nil
 }
 
 func (client *Client) Debug(format string, v ...interface{}) {
@@ -271,8 +312,16 @@ QueryLoop:
 
 		client.Debug("%s %s", q.method, q.url.String())
 
-		httpClient := &http.Client{
-			Timeout: q.timeout,
+		var httpClient *http.Client
+		if client.transport == (&http.Transport{}) {
+			httpClient = &http.Client{
+				Timeout: q.timeout,
+			}
+		} else {
+			httpClient = &http.Client{
+				Timeout:   q.timeout,
+				Transport: client.transport,
+			}
 		}
 
 		// @TODO: check error?

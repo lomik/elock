@@ -15,16 +15,18 @@ import (
 	"time"
 
 	"github.com/lomik/elock"
+	"github.com/lomik/elock/etcd"
 )
 
 const APP = "elock"
 const VERSION = "0.4.0"
 
 type Config struct {
-	EtcdEndpoints []string `json:"etcd-endpoints"`
-	EtcdRoot      string   `json:"etcd-root"`
-	EtcdTTL       string   `json:"etcd-default-ttl"`
-	EtcdRefresh   string   `json:"etcd-default-refresh"`
+	EtcdEndpoints []string     `json:"etcd-endpoints"`
+	EtcdRoot      string       `json:"etcd-root"`
+	EtcdTTL       string       `json:"etcd-default-ttl"`
+	EtcdRefresh   string       `json:"etcd-default-refresh"`
+	EtcdTls       etcd.TlsOpts `json:"etcd-tls"`
 }
 
 func main() {
@@ -136,6 +138,7 @@ Usage: %s [options] etcd_key command
 	if *list {
 		records, err := elock.List(elock.Options{
 			EtcdEndpoints: config.EtcdEndpoints,
+			EtcdTls:       config.EtcdTls,
 			Path:          config.EtcdRoot,
 			Debug:         *debug,
 		}, *timeout)
@@ -168,6 +171,7 @@ Usage: %s [options] etcd_key command
 	if *remove {
 		err := elock.Remove(elock.Options{
 			EtcdEndpoints: config.EtcdEndpoints,
+			EtcdTls:       config.EtcdTls,
 			Path:          config.EtcdRoot,
 			Debug:         *debug,
 		}, *timeout, args)
@@ -186,6 +190,7 @@ Usage: %s [options] etcd_key command
 
 	x, err := elock.New(elock.Options{
 		EtcdEndpoints: config.EtcdEndpoints,
+		EtcdTls:       config.EtcdTls,
 		Path:          filepath.Join(config.EtcdRoot, args[0]),
 		Slots:         *slots,
 		TTL:           lockTLL,
