@@ -46,6 +46,7 @@ func main() {
 	runAnyway := flag.Bool("run-anyway", false, "Run the command even if the lock could not take")
 	sleepBefore := flag.Duration("sleep-before", 0, "Sleep random time (from zero to selected) before lock attempt")
 	quiet := flag.Bool("quiet", false, "Don't print anything")
+	waitTime := flag.Duration("wait-time", 0, "Wait time for inner command to end")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -259,10 +260,15 @@ Usage: %s [options] etcd_key command
 	}
 
 	x.OnExpired(func() {
-		if *debug {
-			log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
-		}
-		cmd.Process.Kill()
+		cmd.Process.Signal(syscall.SIGINT)
+		timer := time.AfterFunc(*waitTime, func() {
+			if *debug {
+				log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
+			}
+			cmd.Process.Kill()
+		})
+		cmd.Wait()
+		timer.Stop()
 	})
 
 	err = cmd.Wait()
