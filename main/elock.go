@@ -260,15 +260,21 @@ Usage: %s [options] etcd_key command
 	}
 
 	x.OnExpired(func() {
-		cmd.Process.Signal(syscall.SIGINT)
-		timer := time.AfterFunc(*waitTime, func() {
+		killCmd := func() {
 			if *debug {
 				log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
 			}
 			cmd.Process.Kill()
-		})
-		cmd.Wait()
-		timer.Stop()
+		}
+
+		if *waitTime > 0 {
+			cmd.Process.Signal(syscall.SIGINT)
+			timer := time.AfterFunc(*waitTime, killCmd)
+			cmd.Wait()
+			timer.Stop()
+		} else {
+			killCmd()
+		}
 	})
 
 	err = cmd.Wait()
