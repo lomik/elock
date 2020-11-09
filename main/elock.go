@@ -29,6 +29,13 @@ type Config struct {
 	EtcdTls       etcd.TlsOpts `json:"etcd-tls"`
 }
 
+func stopCommand(cmd *exec.Cmd, waitTime time.Duration, cmdStopped chan bool) {
+	cmd.Process.Signal(syscall.SIGTERM)
+	timer := time.AfterFunc(waitTime, func() {cmd.Process.Kill()})
+	<- cmdStopped
+	timer.Stop()
+}
+
 func main() {
 	configFile := flag.String("config", fmt.Sprintf("/etc/%s/%s.json", APP, APP), "Config file in json format")
 	printConfig := flag.Bool("config-print-default", false, "Print default config")
@@ -215,6 +222,13 @@ Usage: %s [options] etcd_key command
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
 
+	cmd := exec.Command(args[1], args[2:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	cmdStopped := make(chan bool)
+
 	go func() {
 		for s := range c {
 			// sig is a ^C, handle it
@@ -222,6 +236,9 @@ Usage: %s [options] etcd_key command
 				log.Printf("signal received: %#v", s)
 			}
 
+			if *waitTime > 0 {
+				stopCommand(cmd, *waitTime, cmdStopped)
+			}
 			x.Unlock()
 			exit(1)
 		}
@@ -231,11 +248,8 @@ Usage: %s [options] etcd_key command
 		if *runAnyway { // force run
 			log.Println(err)
 
-			cmd := exec.Command(args[1], args[2:]...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Stdin = os.Stdin
 			err = cmd.Run()
+			close(cmdStopped)
 
 			if err != nil {
 				log.Fatal(err)
@@ -248,10 +262,6 @@ Usage: %s [options] etcd_key command
 		fatal(err)
 	}
 
-	cmd := exec.Command(args[1], args[2:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
 	err = cmd.Start()
 
 	if err != nil {
@@ -260,24 +270,19 @@ Usage: %s [options] etcd_key command
 	}
 
 	x.OnExpired(func() {
-		killCmd := func() {
+		if *waitTime > 0 {
+			stopCommand(cmd, *waitTime, cmdStopped)
+		} else {
 			if *debug {
 				log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
 			}
 			cmd.Process.Kill()
 		}
-
-		if *waitTime > 0 {
-			cmd.Process.Signal(syscall.SIGINT)
-			timer := time.AfterFunc(*waitTime, killCmd)
-			cmd.Wait()
-			timer.Stop()
-		} else {
-			killCmd()
-		}
 	})
 
 	err = cmd.Wait()
+	close(cmdStopped)
+
 	x.Unlock()
 	if err != nil {
 		log.Fatal(err)
