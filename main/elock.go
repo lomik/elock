@@ -29,6 +29,13 @@ type Config struct {
 	EtcdTls       etcd.TlsOpts `json:"etcd-tls"`
 }
 
+func stopCommand(cmd *exec.Cmd, waitTime time.Duration, cmdStopped chan bool) {
+	cmd.Process.Signal(syscall.SIGTERM)
+	timer := time.AfterFunc(waitTime, func() {cmd.Process.Kill()})
+	<- cmdStopped
+	timer.Stop()
+}
+
 func main() {
 	configFile := flag.String("config", fmt.Sprintf("/etc/%s/%s.json", APP, APP), "Config file in json format")
 	printConfig := flag.Bool("config-print-default", false, "Print default config")
@@ -46,6 +53,7 @@ func main() {
 	runAnyway := flag.Bool("run-anyway", false, "Run the command even if the lock could not take")
 	sleepBefore := flag.Duration("sleep-before", 0, "Sleep random time (from zero to selected) before lock attempt")
 	quiet := flag.Bool("quiet", false, "Don't print anything")
+	waitTime := flag.Duration("wait-time", 0, "Wait time for inner command to end")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -214,6 +222,13 @@ Usage: %s [options] etcd_key command
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT, syscall.SIGSTOP, syscall.SIGTERM)
 
+	cmd := exec.Command(args[1], args[2:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	cmdStopped := make(chan bool)
+
 	go func() {
 		for s := range c {
 			// sig is a ^C, handle it
@@ -221,6 +236,9 @@ Usage: %s [options] etcd_key command
 				log.Printf("signal received: %#v", s)
 			}
 
+			if *waitTime > 0 {
+				stopCommand(cmd, *waitTime, cmdStopped)
+			}
 			x.Unlock()
 			exit(1)
 		}
@@ -230,11 +248,8 @@ Usage: %s [options] etcd_key command
 		if *runAnyway { // force run
 			log.Println(err)
 
-			cmd := exec.Command(args[1], args[2:]...)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			cmd.Stdin = os.Stdin
 			err = cmd.Run()
+			close(cmdStopped)
 
 			if err != nil {
 				log.Fatal(err)
@@ -247,10 +262,6 @@ Usage: %s [options] etcd_key command
 		fatal(err)
 	}
 
-	cmd := exec.Command(args[1], args[2:]...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
 	err = cmd.Start()
 
 	if err != nil {
@@ -259,13 +270,19 @@ Usage: %s [options] etcd_key command
 	}
 
 	x.OnExpired(func() {
-		if *debug {
-			log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
+		if *waitTime > 0 {
+			stopCommand(cmd, *waitTime, cmdStopped)
+		} else {
+			if *debug {
+				log.Printf("lock expired, send kill to pid %d", cmd.Process.Pid)
+			}
+			cmd.Process.Kill()
 		}
-		cmd.Process.Kill()
 	})
 
 	err = cmd.Wait()
+	close(cmdStopped)
+
 	x.Unlock()
 	if err != nil {
 		log.Fatal(err)
