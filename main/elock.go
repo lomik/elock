@@ -227,6 +227,11 @@ Usage: %s [options] etcd_key command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	cmd.Env = os.Environ()
+
+	if *setEtcdSlot {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("ETCD_SLOT=%#v", x.LockSlot))
+	}
 
 	cmdStopped := make(chan bool)
 
@@ -261,10 +266,6 @@ Usage: %s [options] etcd_key command
 		}
 
 		fatal(err)
-	}
-
-	if *setEtcdIndex {
-		cmd.Env = []string{fmt.Sprintf("ETCD_SLOT=%#v", x.LockSlot)}
 	}
 
 	err = cmd.Start()
