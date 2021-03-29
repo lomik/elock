@@ -116,7 +116,7 @@ type XLock struct {
 
 	locked    bool
 	lockValue string // uniq identifier of this locker
-	lockSlot  int
+	LockSlot  int
 	lockStart time.Time
 
 	refreshExit chan bool
@@ -259,7 +259,7 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 
 	// refresh lock worker function
 	startRefresh := func() {
-		lockKey := filepath.Join(x.options.Path, fmt.Sprintf("lock-%d", x.lockSlot))
+		lockKey := filepath.Join(x.options.Path, fmt.Sprintf("lock-%d", x.LockSlot))
 
 		wg := &x.refreshWg
 		exit := x.refreshExit
@@ -340,7 +340,7 @@ func (x *XLock) lock(ctx context.Context, nowait bool) error {
 
 			if r.ErrorCode == 0 {
 				x.locked = true
-				x.lockSlot = i
+				x.LockSlot = i
 				x.Debug("SUCCESS locked slot %d", i)
 				x.updateExpires()
 				x.expireWorker()
@@ -422,7 +422,7 @@ func (x *XLock) Unlock() error {
 	close(x.refreshExit)
 	x.refreshWg.Wait()
 
-	lockKey := filepath.Join(x.options.Path, fmt.Sprintf("lock-%d", x.lockSlot))
+	lockKey := filepath.Join(x.options.Path, fmt.Sprintf("lock-%d", x.LockSlot))
 
 	now := time.Now()
 	minDeadline := x.lockStart.Add(x.options.MinLockTime)

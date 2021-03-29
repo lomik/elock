@@ -54,6 +54,7 @@ func main() {
 	sleepBefore := flag.Duration("sleep-before", 0, "Sleep random time (from zero to selected) before lock attempt")
 	quiet := flag.Bool("quiet", false, "Don't print anything")
 	waitTime := flag.Duration("wait-time", 0, "Wait time for inner command to end")
+	setEtcdSlot := flag.Bool("set-etcd-slot", false, "Set etcd slot in ENV variable")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, `%s %s
@@ -226,6 +227,11 @@ Usage: %s [options] etcd_key command
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	cmd.Env = os.Environ()
+
+	if *setEtcdSlot {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("ETCD_SLOT=%#v", x.LockSlot))
+	}
 
 	cmdStopped := make(chan bool)
 
